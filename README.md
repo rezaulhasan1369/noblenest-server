@@ -29,3 +29,10 @@ these only with owner approval; do not default to unrestricted network access.
 
 Recheck health, the frontend browser button, allowed/rejected CORS origins, and
 `npm run check:db` after deployment and an authorized GitHub push/redeploy.
+
+## Deployment verification
+
+Production MongoDB connectivity previously passed. GitHub-triggered deployment
+remains unverified. After an approved push to `main`, confirm Render automatically
+deploys the pushed commit and `/api/health` returns HTTP 200. Record the deployment
+trigger and commit SHA before considering a manual deployment.
