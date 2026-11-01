@@ -8,7 +8,7 @@ Health returns only `{ "status": "ok" }`; it is liveness, not database readiness
 Database readiness is an operator-only CLI command with a bounded connection/ping,
 generic output and nonzero exit on failure. Run it in the deployed service shell
 after securely supplying Atlas credentials. There is no public readiness endpoint.
-The API itself does not need a database connection during D0.
+Health does not need a database connection; event reads use MongoDB lazily.
 
 `CLIENT_ORIGIN` is a comma-separated list of exact origins without trailing slashes.
 Use `http://localhost:3000` locally; remote production origins must use HTTPS.
@@ -36,3 +36,81 @@ Production MongoDB connectivity previously passed. GitHub-triggered deployment
 remains unverified. After an approved push to `main`, confirm Render automatically
 deploys the pushed commit and `/api/health` returns HTTP 200. Record the deployment
 trigger and commit SHA before considering a manual deployment.
+
+## Public event retrieval (D3.2)
+
+These are read-only, unauthenticated endpoints. No event write or joining route
+exists. Existing authorization policies and authentication collections are unchanged.
+Run `npm run check`, `npm run check:events` and `npm test` before review.
+
+| Endpoint | Query | HTTP 200 envelope |
+| --- | --- | --- |
+| `GET /api/events` | Optional `page`, decimal integer 1-1000, default 1 | `{ "events": [], "pagination": { "page": 1, "pageSize": 6 } }` |
+| `GET /api/events/upcoming` | None | `{ "events": [] }` |
+| `GET /api/events/:id` | None; ID is exactly 24 hexadecimal characters | `{ "event": { ... } }` |
+
+Both lists select `eventDate > server UTC now`, ascending `eventDate` then `_id`.
+The D3.1 repository fixes every page to six items (maximum skip 5994). The homepage
+always calls `listUpcomingEvents()` without arguments. No page size, arbitrary
+sort, offset, filters, duplicate keys, nested parameters, leading-zero numbers,
+decimals or unknown query keys are accepted. Empty lists and pages beyond the data
+return HTTP 200 with `events: []`. There is no total count or snapshot guarantee:
+time passing or concurrent changes can shift page boundaries. HTTP HEAD follows
+Express GET semantics and OPTIONS retains the existing CORS policy.
+
+Event DTO shape (illustration only; no database record is created):
+
+```json
+{
+  "event": {
+    "id": "000000000000000000000001",
+    "title": "Example community activity",
+    "description": "Illustrative response shape only.",
+    "eventType": "Cleanup",
+    "thumbnailUrl": "https://example.invalid/image.webp",
+    "thumbnailAlt": "Community activity",
+    "location": "Example location",
+    "eventDate": "2030-02-01T09:00:00.000Z",
+    "creatorId": "verified-user-id",
+    "createdAt": "2030-01-01T00:00:00.000Z",
+    "updatedAt": "2030-01-01T00:00:00.000Z"
+  }
+}
+```
+
+Event errors use `{ "error": "fixed message" }`: 400 `Invalid event query.` or
+`Invalid event identifier.`, 404 `Event not found.`, and 503
+`Event data is temporarily unavailable.`. Existing global errors still apply to
+CORS, malformed path encoding, body parsing and unmatched routes. Neither raw
+driver errors, credentials nor stack traces are returned or logged. All matched
+event responses use `Cache-Control: no-store`. DTOs expose only the D3.1 allowlist;
+creator IDs are public under that approved contract, never session data or emails.
+
+### MongoDB operations and indexes
+
+The configured database must be NobleNest (`MONGODB_DB_NAME` case-insensitively
+matches `noblenest`; the exact configured spelling is passed to MongoDB). Only
+`nn_events` is selected by the event store. One lazy MongoClient per runtime is
+reused across requests, separate from the unchanged authorization client. Maximum
+pool size is five, pool wait/selection/connect timeouts are five seconds, and
+operation/socket timeouts are ten seconds. Health remains liveness during a
+database outage. Development without both MongoDB variables returns event 503s;
+production still requires database configuration. Shutdown drains HTTP first,
+closes both clients even if one fails, and retains the ten-second shutdown deadline.
+
+`npm run events:indexes:plan` is offline: it loads no environment file, connects
+nowhere and prints only the approved `nn_events` index specifications:
+
+- `events_upcoming_date_id`: `{ eventDate: 1, _id: 1 }`
+- `events_creator_date_id`: `{ creatorId: 1, eventDate: 1, _id: 1 }`
+- MongoDB's built-in unique `_id_` index handles ID lookup.
+
+There is intentionally no apply flag or automatic initialization. The unchanged
+D3.1 `repository.initializeIndexes()` remains the explicit mechanism for a future
+separately owner-approved operator operation against a verified target. It is
+never called by startup, reads or a public route. Do not repurpose a test NODE_ENV
+as permission to run against Atlas. Existing index contract tests use an isolated
+collection double; they do not prove live Atlas index presence or query plans.
+Conflicting existing index definitions require operator review; never drop or
+rebuild indexes automatically. A missing index can affect performance, not the
+fixed sort and filtering contract.
