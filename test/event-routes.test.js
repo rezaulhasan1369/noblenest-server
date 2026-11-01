@@ -142,7 +142,7 @@ test('public event routes preserve CORS, security headers, health, authz and uns
   for (const path of ['/api/events', '/api/events/upcoming', `/api/events/${id(1)}`, `/api/events/${id(1)}/join`]) {
     assert.equal((await request(path, { method: 'PUT' })).status, 404, `PUT ${path}`);
   }
-  for (const method of ['POST', 'PATCH', 'DELETE']) assert.equal((await request(`/api/events/${id(1)}/join`, { method })).status, 404);
+  for (const method of ['PATCH', 'DELETE']) assert.equal((await request(`/api/events/${id(1)}/join`, { method })).status, 404);
   assert.equal(db.calls.length, before);
   assert.equal((await request('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' })).status, 400);
   assert.equal((await request('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'a'.repeat(17000) }) })).status, 413);

@@ -216,3 +216,80 @@ tokens, configuration values or raw exceptions are returned or logged.
 
 Tests use signed fixture tokens and isolated collection doubles only. Frontend
 Manage Events integration requires separate owner review/approval after D3.5A.
+
+## Event participation (D4.1)
+
+Both endpoints reuse the existing verified Bearer JWT, event scope and active
+session middleware. No user identity is accepted from cookies, query parameters,
+headers or request bodies. Global CORS, Helmet and 16 KiB body limits still apply.
+All matched participation responses use `Cache-Control: no-store`.
+
+| Endpoint | Request | Success |
+| --- | --- | --- |
+| `POST /api/events/:id/join` | No query parameters or body; ID is 24 hexadecimal characters | 201 `{ "participation": { "id": "...", "eventId": "...", "joinedAt": "UTC ISO timestamp" } }` |
+| `GET /api/events/joined` | Optional `page` (1-1000, default 1), `pageSize` (1-50, default 12); no body | 200 `{ "events": [{ "participationId": "...", "joinedAt": "UTC ISO timestamp", "event": { ...approved event DTO... } }], "pagination": { "page": 1, "pageSize": 12 } }` |
+
+An already-joined user receives HTTP 200 with the same participation envelope,
+original ID and original join timestamp. It creates no second record. An empty
+joined list is HTTP 200 with `events: []`. Static `/joined` precedes public `/:id`.
+Creators may join their own events. No extra past-event restriction is introduced;
+the referenced event must exist. No Leave Event or attendee listing is provided.
+
+The separate `nn_event_participants` collection stores only server-generated `_id`
+(ObjectId), `eventId` (BSON ObjectId), verified `userId`, and `joinedAt` (UTC BSON
+Date). It shares the existing event MongoClient pool, database and shutdown path;
+Better Auth collections remain separate. Import/startup performs no participation
+read, write, collection creation or index initialization.
+
+### Unique index is a mandatory production prerequisite
+
+`npm run participation:indexes:plan` is offline only: no environment loading,
+client construction, connection or apply mode. Planned indexes:
+
+- Required `participants_event_user_unique`: `{ eventId: 1, userId: 1 }`, unique.
+- Recommended `participants_user_event`: `{ userId: 1, eventId: 1 }`, for filtering
+  a user's participation records. Event-date sorting still follows the lookup.
+
+No index is created by these changes. Each join inspects existing index metadata
+and fails closed with generic 503 unless the full, unique eventId/userId index is
+confirmed by metadata and a successful read hinting that index. Building/hidden,
+sparse, partial, non-unique, prepareUnique and non-simple collation
+variants do not satisfy the check. An equivalent full index need not have the
+planned name. Inspection failure also blocks insertion; there is no override or
+cached confirmation. The operator must separately obtain owner approval to
+provision/verify the collection/index and database permissions before enabling
+production joins. Do not drop/alter the required index while join writes are active.
+
+The atomic unique constraint, not a read-then-insert check, prevents concurrent
+duplicates. Insert duplicate-key code 11000 is recovered only by finding the
+exact verified event/user pair; an unrelated collision without that row is 503.
+No raw duplicate error, driver metadata or participant identities escape.
+
+### Retrieval and deleted events
+
+Joined retrieval matches userId inside MongoDB, looks up current `nn_events`
+details and omits missing/deleted references with an inner unwind. It sorts event
+date, event ID and participation ID ascending before bounded skip/limit. No
+deleted placeholder or stale event snapshot is returned; empty/orphan-only lists
+are empty arrays. Query execution is capped at five seconds and disk spill is
+disabled. There is no total count or snapshot guarantee.
+
+Event deletion does not cascade participation deletion. An event deleted between
+the existence check and insertion can leave an orphan; subsequent joined reads
+omit it. This phase introduces no cross-collection transaction, migration or
+cleanup job. A concurrent delete/read can reflect the current query snapshot;
+it does not provide a serializable guarantee across collections.
+
+Participation errors use fixed safe bodies: 400 `Invalid event query.`,
+`Invalid event identifier.` or `Request body is not allowed.`, 401
+`Authentication required`, 404 `Event not found.`, 415 `Unsupported content type`,
+and 503 `Participation data is temporarily unavailable.`. Missing auth configuration
+retains 503 `Authentication is not configured`. Body-bearing requests are rejected
+even if JSON is empty; non-JSON content types are unsupported. Omit Content-Type
+for the normal bodyless requests. Duplicate/unknown/operator/malformed pagination
+query keys are rejected before storage access. Existing global parsing/CORS error
+responses still apply.
+
+Tests use signed JWT fixtures and BSON-aware doubles; no live Atlas operation is
+performed. Actual Atlas index enforcement, permissions and aggregation behavior
+require separate owner-approved verification before production use.

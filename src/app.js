@@ -4,8 +4,9 @@ import helmet from 'helmet';
 import { createEventRouter } from './event-routes.js';
 import { createEventWriteRouter } from './event-write-routes.js';
 import { createOwnedEventRouter } from './event-owned-routes.js';
+import { createParticipationRouter } from './participation-routes.js';
 
-export function createApp(config, authorization, eventRepository) {
+export function createApp(config, authorization, eventRepository, participationRepository) {
   const app = express();
   app.disable('x-powered-by');
   app.use(helmet());
@@ -30,6 +31,7 @@ export function createApp(config, authorization, eventRepository) {
   app.get('/api/authz/me', authenticate, (req, res) => res.json({ subject: req.auth.subject, scopes: req.auth.scopes }));
   // Static authenticated /mine must resolve before the public /:id handler.
   app.use('/api/events', createOwnedEventRouter(eventRepository, authenticate));
+  app.use('/api/events', createParticipationRouter(participationRepository, authenticate));
   app.use('/api/events', createEventRouter(eventRepository));
   app.use('/api/events', createEventWriteRouter(eventRepository, authenticate));
   app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

@@ -18,7 +18,7 @@ export async function createRuntime(config, {
   try {
     events = eventStoreFactory(config);
     authorization = authorizationFactory(config);
-    return { app: createApp(config, authorization, events.repository), close };
+    return { app: createApp(config, authorization, events.repository, events.participationRepository), close };
   } catch {
     try { await close(); } catch { /* Preserve generic startup failure. */ }
     throw Error('Server resource initialization failed.');

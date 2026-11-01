@@ -8,17 +8,19 @@ import { createRuntime } from '../src/runtime.js';
 
 const config = { nodeEnv: 'test', mongoUri: 'mongodb://unused.invalid', dbName: 'noblenest', origins: ['http://localhost:3000'] };
 
-test('event store reuses one lazy bounded client and only nn_events, never initializing indexes', async () => {
-  const calls = []; let instances = 0;
+test('event and participation stores reuse one lazy bounded client, never initializing indexes', async () => {
+  const calls = [], collections = []; let instances = 0;
   class Client {
     constructor(uri, options) { instances++; assert.equal(uri, config.mongoUri); calls.push({ options }); }
     db(name) { assert.equal(name, 'noblenest'); return { collection(name) {
-      assert.equal(name, 'nn_events'); return { async findOne() { calls.push('read'); return null; } };
+      collections.push(name); return { async findOne() { calls.push('read'); return null; } };
     } }; }
     async close() { calls.push('close'); }
   }
   const store = createEventStore(config, { Client });
   assert.equal(calls.length, 1); assert.equal(instances, 1);
+  assert.deepEqual(collections, ['nn_events', 'nn_event_participants']);
+  assert.equal(typeof store.participationRepository.joinEvent, 'function');
   assert.deepEqual(calls[0].options, { maxPoolSize: 5, minPoolSize: 0, serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000, socketTimeoutMS: 10000, waitQueueTimeoutMS: 5000, timeoutMS: 10000 });
   for (let index = 0; index < 3; index++) assert.equal(await store.repository.findEventById('000000000000000000000001'), null);
   assert.equal(instances, 1);
