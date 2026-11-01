@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { createEventRouter } from './event-routes.js';
 import { createEventWriteRouter } from './event-write-routes.js';
+import { createOwnedEventRouter } from './event-owned-routes.js';
 
 export function createApp(config, authorization, eventRepository) {
   const app = express();
@@ -27,6 +28,8 @@ export function createApp(config, authorization, eventRepository) {
   });
   const authenticate = authorization?.middleware || ((_req, res) => res.status(503).json({ error: 'Authentication is not configured' }));
   app.get('/api/authz/me', authenticate, (req, res) => res.json({ subject: req.auth.subject, scopes: req.auth.scopes }));
+  // Static authenticated /mine must resolve before the public /:id handler.
+  app.use('/api/events', createOwnedEventRouter(eventRepository, authenticate));
   app.use('/api/events', createEventRouter(eventRepository));
   app.use('/api/events', createEventWriteRouter(eventRepository, authenticate));
   app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

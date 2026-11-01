@@ -12,7 +12,7 @@
     "check": "node --check src/config.js && node --check src/app.js && node --check src/server.js && node --check src/authorization.js && node --check src/event-model.js && node --check src/event-repository.js && node --check scripts/check-db.js && node --check test/app.test.js && node --check test/authorization.test.js && node --check test/event-model.test.js && node --check test/event-repository.test.js && npm run check:events",
     "test": "node --test",
     "check:db": "node --env-file-if-exists=.env scripts/check-db.js",
-    "check:events": "node --check src/event-routes.js && node --check src/event-write-routes.js && node --check src/event-store.js && node --check src/runtime.js && node --check scripts/event-indexes-plan.js && node --check test/event-routes.test.js && node --check test/event-store.test.js && node --check test/event-write-routes.test.js",
+    "check:events": "node --check src/event-routes.js && node --check src/event-write-routes.js && node --check src/event-owned-routes.js && node --check src/event-store.js && node --check src/runtime.js && node --check scripts/event-indexes-plan.js && node --check test/event-routes.test.js && node --check test/event-store.test.js && node --check test/event-write-routes.test.js && node --check test/event-owned-routes.test.js",
     "events:indexes:plan": "node scripts/event-indexes-plan.js"
   },
   "dependencies": {

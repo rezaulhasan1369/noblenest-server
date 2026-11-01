@@ -166,3 +166,53 @@ Writes reuse the existing `nn_events` repository and pooled client. There is no
 index execution or new environment variable. Tests use signed fixture JWTs and
 isolated BSON-aware collection doubles only. Live Atlas writes and deployments
 are deliberately untested; no records have been inserted into a real database.
+
+## Authenticated My Events listing (D3.5A)
+
+`GET /api/events/mine` requires the same verified Bearer JWT, event scope and
+active-session checks as event writes. The static route is mounted before the
+public `/:id` route; other public reads remain unauthenticated. Cookies, query
+parameters and custom identity headers cannot select the creator.
+
+Allowed query parameters are `page` (1-1000, default 1) and `pageSize` (1-50,
+default 12). Both are positive decimal integers without leading zeros. Duplicate
+keys, unknown keys, nested/operator syntax, decimals, scientific notation,
+whitespace, empty values and out-of-range values return 400. The D3.1 pagination
+validator enforces the bounds; maximum skip is 49950. Example:
+
+```http
+GET /api/events/mine?page=2&pageSize=12
+Authorization: Bearer <JWT>
+```
+
+HTTP 200 always uses the established event DTO and this pagination envelope:
+
+```json
+{
+  "events": [],
+  "pagination": { "page": 2, "pageSize": 12 }
+}
+```
+
+An empty list or a page beyond the owner's records is a successful empty result,
+not 404. There is no total count or snapshot guarantee. Unlike the public upcoming
+feed, My Events includes both past and future owned records, sorted by eventDate
+then ID ascending, following the existing repository contract.
+
+The handler calls `listEventsByCreator(req.auth, { page, pageSize })`; the unchanged
+repository applies `{ creatorId: verifiedSubject }` inside MongoDB's find operation
+and uses the existing DTO projection. No public collection download or browser
+filtering is involved. The collection remains `nn_events`; no index operation or
+new database connection is introduced.
+
+Matched responses have `Cache-Control: no-store`, including authentication and
+query errors. Errors use the established fixed bodies: 400
+`{ "error": "Invalid event query." }`, 401
+`{ "error": "Authentication required" }`, and database/unexpected failure 503
+`{ "error": "Event data is temporarily unavailable." }`. Missing authentication
+configuration preserves 503 `{ "error": "Authentication is not configured" }`.
+Existing global CORS/body-parser errors retain their behavior. No driver errors,
+tokens, configuration values or raw exceptions are returned or logged.
+
+Tests use signed fixture tokens and isolated collection doubles only. Frontend
+Manage Events integration requires separate owner review/approval after D3.5A.
