@@ -125,7 +125,7 @@ test('missing configuration and driver/cursor failures return only sanitized 503
   }
 });
 
-test('public event routes preserve CORS, security headers, health, authz and absence of writes', async t => {
+test('public event routes preserve CORS, security headers, health, authz and unsupported methods', async t => {
   const db = collection(); const request = await serve(t, createEventRepository(db), {
     middleware(req, _res, next) { req.auth = { subject: 'verified-user', scopes: ['noblenest:events'] }; next(); },
   });
@@ -137,11 +137,12 @@ test('public event routes preserve CORS, security headers, health, authz and abs
   const denied = await request('/api/events', { headers: { Origin: 'https://unapproved.invalid' } });
   assert.equal(denied.status, 403); assert.equal(denied.headers.get('access-control-allow-origin'), null);
   const preflight = await request('/api/events', { method: 'OPTIONS', headers: { Origin: config.origins[0], 'Access-Control-Request-Method': 'GET' } });
-  assert.equal(preflight.status, 204); assert.equal(preflight.headers.get('access-control-allow-methods'), 'GET,HEAD,OPTIONS');
+  assert.equal(preflight.status, 204); assert.equal(preflight.headers.get('access-control-allow-methods'), 'GET,HEAD,OPTIONS,POST,PATCH,DELETE');
   const before = db.calls.length;
   for (const path of ['/api/events', '/api/events/upcoming', `/api/events/${id(1)}`, `/api/events/${id(1)}/join`]) {
-    for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) assert.equal((await request(path, { method })).status, 404, `${method} ${path}`);
+    assert.equal((await request(path, { method: 'PUT' })).status, 404, `PUT ${path}`);
   }
+  for (const method of ['POST', 'PATCH', 'DELETE']) assert.equal((await request(`/api/events/${id(1)}/join`, { method })).status, 404);
   assert.equal(db.calls.length, before);
   assert.equal((await request('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{' })).status, 400);
   assert.equal((await request('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'a'.repeat(17000) }) })).status, 413);
