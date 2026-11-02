@@ -62,7 +62,7 @@ async function setup(t, overrides = {}) {
   const sessions = new Map([['session-owner', 'owner'], ['session-other', 'other']]);
   const verify = createTokenVerifier(jwtConfig, key.publicKey, async (sid, sub) => sessions.get(sid) === sub);
   const repository = Object.hasOwn(overrides, 'repository') ? overrides.repository : createEventRepository(db, { now: () => clock });
-  const authorization = overrides.noAuth ? undefined : { middleware: bearerAuthorization(verify) };
+  const authorization = overrides.noAuth ? undefined : { middleware: bearerAuthorization(verify), creatorEmail: overrides.creatorEmail || (async auth => `${auth.subject}@example.invalid`) };
   const server = createApp({ origins: [jwtConfig.issuer] }, authorization, repository).listen(0, '127.0.0.1');
   await new Promise(resolve => server.once('listening', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
@@ -83,6 +83,28 @@ async function setup(t, overrides = {}) {
   }
   return { db, sessions, request, mint, forged, token, create };
 }
+
+test('HTTP create persists trusted account email privately and rejects email injection on create/update', async t => {
+  const { request, db, create } = await setup(t, { creatorEmail: async auth => { assert.equal(auth.subject, 'owner'); return ' Trusted@Example.Invalid '; } });
+  const event = await create(); assert.equal(db.documents[0].creatorEmail, 'trusted@example.invalid');
+  assert.equal(Object.hasOwn(event, 'creatorEmail'), false);
+  for (const method of ['POST', 'PATCH']) {
+    const response = await request(method, method === 'POST' ? '/api/events' : `/api/events/${event.id}`, { body: { ...payload(), creatorEmail: 'forged@example.invalid' } });
+    assert.equal(response.status, 400);
+  }
+  const read = await request('GET', `/api/events/${event.id}`, { auth: null });
+  assert.equal(Object.hasOwn((await read.json()).event, 'creatorEmail'), false);
+  await request('PATCH', `/api/events/${event.id}`, { body: { title: 'Changed title' } });
+  assert.equal(db.documents[0].creatorEmail, 'trusted@example.invalid');
+});
+
+test('HTTP create fails closed without trusted account email and never exposes lookup errors', async t => {
+  for (const creatorEmail of [async () => undefined, async () => { throw Error('PRIVATE database credentials'); }]) {
+    const { request, db } = await setup(t, { creatorEmail });
+    const response = await request('POST', '/api/events', { body: payload() });
+    assert.equal(response.status, 503); assert.equal((await response.text()).includes('PRIVATE'), false); assert.equal(db.documents.length, 0);
+  }
+});
 
 test('all mutation routes reject missing, malformed, expired, forged and invalid-claim JWTs before any store access', async t => {
   const { request, mint, forged, db } = await setup(t);

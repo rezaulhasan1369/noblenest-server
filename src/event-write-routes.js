@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { EventDataError, parseEventId } from './event-model.js';
 
-export function createEventWriteRouter(repository, authenticate) {
+export function createEventWriteRouter(repository, authenticate, creatorEmail) {
   const router = Router();
   function write(operation, { detail = false, body = true } = {}) {
     return async (req, res) => {
@@ -35,7 +35,9 @@ export function createEventWriteRouter(repository, authenticate) {
   router.post('/', authenticate, write(async (req, res) => {
     // The repository validates the original payload with validateEventInput().
     // Identity comes exclusively from the existing verified JWT middleware.
-    const event = await repository.createEvent(req.auth, req.body);
+    if (!creatorEmail) throw Error('Creator account lookup unavailable');
+    const email = await creatorEmail(req.auth);
+    const event = await repository.createEvent({ ...req.auth, creatorEmail: email }, req.body);
     res.location(`/api/events/${event.id}`).status(201).json({ event });
   }));
   router.patch('/:id', authenticate, write(async (req, res) => {

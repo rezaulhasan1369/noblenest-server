@@ -17,6 +17,14 @@ export class EventDataError extends Error {
   }
 }
 
+// Only call with an account value loaded by the trusted authorization layer.
+export function normalizedCreatorEmail(value) {
+  if (typeof value !== 'string' || value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+    throw new EventDataError('CREATOR_ACCOUNT_UNAVAILABLE', 'Creator account is unavailable.', 503);
+  }
+  return value.trim().toLowerCase();
+}
+
 function isRecord(value) {
   return value !== null && typeof value === 'object' &&
     [Object.prototype, null].includes(Object.getPrototypeOf(value));

@@ -1,11 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ObjectId } from 'mongodb';
-import { EventDataError, EVENT_TYPES, EVENT_LIMITS, validateEventInput, parseEventId, verifiedCreatorId, eventPagination } from '../src/event-model.js';
+import { EventDataError, EVENT_TYPES, EVENT_LIMITS, validateEventInput, parseEventId, verifiedCreatorId, eventPagination, normalizedCreatorEmail } from '../src/event-model.js';
 
 const now = new Date('2030-01-01T00:00:00.000Z');
 const valid = () => ({ title: ' Isolated event test ', description: 'A test description.', eventType: 'Cleanup', thumbnailUrl: 'https://images.example.invalid/event.webp', location: 'Test location', eventDate: '2030-01-02T09:00:00.000Z' });
 const rejects = (callback, code = 'INVALID_EVENT_DATA') => assert.throws(callback, error => error instanceof EventDataError && error.code === code && !error.cause);
+test('creator email normalization rejects invalid account values and mass assignment', () => {
+  assert.equal(normalizedCreatorEmail(' User@Example.Invalid '), 'user@example.invalid');
+  for (const value of [null, {}, '', 'bad', 'a\nb@example.invalid', 'x'.repeat(255) + '@example.invalid']) rejects(() => normalizedCreatorEmail(value), 'CREATOR_ACCOUNT_UNAVAILABLE');
+  for (const partial of [false, true]) rejects(() => validateEventInput({ ...valid(), creatorEmail: 'spoof@example.invalid' }, { partial, now }));
+});
 
 test('event validation trims text, accepts exact form categories and produces a BSON-compatible UTC Date', () => {
   const input = valid();

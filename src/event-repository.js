@@ -1,5 +1,5 @@
 import { ObjectId } from 'mongodb';
-import { EventDataError, validateEventInput, parseEventId, verifiedCreatorId, eventPagination, eventDto } from './event-model.js';
+import { EventDataError, validateEventInput, parseEventId, verifiedCreatorId, normalizedCreatorEmail, eventPagination, eventDto } from './event-model.js';
 
 export const EVENT_COLLECTION_NAME = 'nn_events';
 export const EVENT_INDEXES = Object.freeze([
@@ -36,7 +36,8 @@ export function createEventRepository(collection, { now = () => new Date() } = {
     async createEvent(auth, input) {
       const creatorId = verifiedCreatorId(auth), time = timestamp();
       const values = validateEventInput(input, { now: time });
-      const document = { ...values, _id: new ObjectId(), creatorId, createdAt: time, updatedAt: time };
+      const creatorEmail = normalizedCreatorEmail(auth.creatorEmail);
+      const document = { ...values, _id: new ObjectId(), creatorId, creatorEmail, createdAt: time, updatedAt: time };
       document.thumbnailAlt ??= `Event image: ${document.title}`;
       return database(async () => {
         const result = await collection.insertOne(document);

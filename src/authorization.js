@@ -1,5 +1,14 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { MongoClient } from 'mongodb';
+import { normalizedCreatorEmail, verifiedCreatorId } from './event-model.js';
+
+export async function trustedCreatorEmail(database, auth) {
+  const userId = verifiedCreatorId(auth);
+  const session = await database.collection('nn_auth_session').findOne({ _id: auth.sessionId, userId, expiresAt: { $gt: new Date() } }, { projection: { _id: 1 } });
+  if (!session) throw Error('Creator session unavailable');
+  const user = await database.collection('nn_auth_user').findOne({ _id: userId }, { projection: { email: 1 } });
+  return normalizedCreatorEmail(user?.email);
+}
 
 export function readAuthConfig(env = process.env) {
   const values = [env.AUTH_JWT_ISSUER, env.AUTH_JWT_AUDIENCE, env.AUTH_JWKS_URL];
@@ -46,5 +55,5 @@ export function createAuthorization(config, authConfig = readAuthConfig()) {
   const client = new MongoClient(config.mongoUri, { maxPoolSize: 5, serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000, socketTimeoutMS: 10000 });
   const key = createRemoteJWKSet(new URL(authConfig.jwksUrl), { timeoutDuration: 5000 });
   const verify = createTokenVerifier(authConfig, key, async (sid, sub) => Boolean(await client.db(config.dbName).collection('nn_auth_session').findOne({ _id: sid, userId: sub, expiresAt: { $gt: new Date() } }, { projection: { _id: 1 } })));
-  return { middleware: bearerAuthorization(verify), close: () => client.close() };
+  return { middleware: bearerAuthorization(verify), creatorEmail: auth => trustedCreatorEmail(client.db(config.dbName), auth), close: () => client.close() };
 }

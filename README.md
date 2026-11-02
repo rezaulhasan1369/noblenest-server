@@ -1,4 +1,18 @@
-# NobleNest server — Phase D0
+# NobleNest API
+
+Social development event CRUD, private ownership listings and participation. Client repository: https://github.com/rezaulhasan1369/noblenest-client ; server repository: https://github.com/rezaulhasan1369/noblenest-server . Documented API https://noblenest-api.onrender.com has not been verified against the local D5 revision.
+
+### Creator email (D5)
+
+New event creation rechecks the authenticated session and loads the matching `nn_auth_user` email through the existing authorization database/client. It trims/lowercases and validates that account value, stores `creatorEmail` alongside `creatorId`, and fails closed if no valid account email is available. This is trusted account provenance, not proof of mailbox verification (email verification is intentionally not required).
+
+Creator email is not accepted in create/update bodies, cannot be edited and is omitted from event DTOs. Ownership always uses verified creatorId. Historical events without creatorEmail remain readable/editable/deletable; no backfill or migration occurs. The authorization database user must be allowed to read matching session/account records. Lookup/driver errors remain generic 503 responses.
+
+### Verification and operational boundaries
+
+Unit/HTTP tests use in-memory collections and locally signed JWTs. Profile integration tests use Better Auth's memory adapter. Browser fixtures do not establish real MongoDB persistence or current deployed behavior. Run tests sequentially with `node --test --test-concurrency=1`; never point a test runner at live Atlas.
+
+There is no distributed event API rate limiter. Per-process counters would reset and differ across instances, so shared/durable protection is deferred pending separately approved infrastructure. Existing auth-form throttles remain enabled. Token acquisition and event fetches share a bounded cancellation signal on the client, without automatic mutation retries. Participation index checks, orphan omission and non-cascading deletion policies below remain unchanged; no automatic maintenance or index creation was added.
 
 Node 24, npm, JavaScript ES modules. Run `npm ci`, copy `.env.example` to `.env`,
 then `npm run dev`. Local API: http://localhost:5000/api/health.
@@ -40,7 +54,7 @@ trigger and commit SHA before considering a manual deployment.
 ## Public event retrieval (D3.2)
 
 These GET endpoints remain read-only and unauthenticated. Authenticated writes are
-described below; no joining route exists. Authorization policies and authentication collections are unchanged.
+described below, along with participation routes in D4.1. Authentication collections remain separate from event data.
 Run `npm run check`, `npm run check:events` and `npm test` before review.
 
 | Endpoint | Query | HTTP 200 envelope |
@@ -89,8 +103,8 @@ creator IDs are public under that approved contract, never session data or email
 ### MongoDB operations and indexes
 
 The configured database must be NobleNest (`MONGODB_DB_NAME` case-insensitively
-matches `noblenest`; the exact configured spelling is passed to MongoDB). Only
-`nn_events` is selected by the event store. One lazy MongoClient per runtime is
+matches `noblenest`; the exact configured spelling is passed to MongoDB). Both
+`nn_events` and `nn_event_participants` are selected by the event store. One lazy MongoClient per runtime is
 reused across requests, separate from the unchanged authorization client. Maximum
 pool size is five, pool wait/selection/connect timeouts are five seconds, and
 operation/socket timeouts are ten seconds. Health remains liveness during a
@@ -160,7 +174,7 @@ and verified `creatorId` in the filter; there is no preceding ownership read.
 All event responses are non-cacheable. The same exact CORS origins are required;
 event-path preflights now advertise POST/PATCH/DELETE in addition to GET/HEAD/OPTIONS.
 Other paths keep their existing method policy, credentials remain disabled, and
-PUT/join routes are absent. CORS is not a substitute for JWT authorization.
+PUT is unsupported; authenticated join routes are documented below. CORS is not a substitute for JWT authorization.
 
 Writes reuse the existing `nn_events` repository and pooled client. There is no
 index execution or new environment variable. Tests use signed fixture JWTs and

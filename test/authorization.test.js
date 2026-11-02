@@ -1,10 +1,23 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPair, SignJWT } from 'jose';
-import { createTokenVerifier, readAuthConfig, bearerAuthorization, requireOwnership } from '../src/authorization.js';
+import { createTokenVerifier, readAuthConfig, bearerAuthorization, requireOwnership, trustedCreatorEmail } from '../src/authorization.js';
 import { createApp } from '../src/app.js';
 
 const config = { issuer: 'http://127.0.0.1:3000', audience: 'http://127.0.0.1:5001' };
+test('creator email comes only from matching active session and account records', async () => {
+  const auth = { subject: 'owner', sessionId: 'active', scopes: ['noblenest:events'], email: 'forged@example.invalid' };
+  const calls = [];
+  let session = { _id: 'active' }, account = { email: ' Owner@Example.Invalid ' };
+  const database = { collection(name) { return { async findOne(filter, options) { calls.push({ name, filter, options }); return name === 'nn_auth_session' ? session : account; } }; } };
+  assert.equal(await trustedCreatorEmail(database, auth), 'owner@example.invalid');
+  assert.equal(calls[0].filter.userId, 'owner'); assert.equal(calls[0].filter._id, 'active'); assert(calls[0].filter.expiresAt.$gt instanceof Date);
+  assert.deepEqual(calls[1], { name: 'nn_auth_user', filter: { _id: 'owner' }, options: { projection: { email: 1 } } });
+  session = null; calls.length = 0; await assert.rejects(trustedCreatorEmail(database, auth)); assert.equal(calls.length, 1);
+  session = { _id: 'active' };
+  for (const value of [null, { email: '' }, { email: 'invalid' }]) { account = value; await assert.rejects(trustedCreatorEmail(database, auth)); }
+  calls.length = 0; await assert.rejects(trustedCreatorEmail(database, { subject: 'owner' })); assert.equal(calls.length, 0);
+});
 test('authentication configuration fails closed and requires explicit trusted URLs', () => {
   assert.equal(readAuthConfig({}), null);
   for (const env of [{ AUTH_JWT_ISSUER: config.issuer }, { NODE_ENV: 'production', AUTH_JWT_ISSUER: config.issuer, AUTH_JWT_AUDIENCE: config.audience, AUTH_JWKS_URL: config.issuer + '/api/auth/jwks' }, { AUTH_JWT_ISSUER: config.issuer, AUTH_JWT_AUDIENCE: config.audience, AUTH_JWKS_URL: 'https://attacker.invalid/jwks' }]) assert.throws(() => readAuthConfig(env));

@@ -5,7 +5,7 @@ import { createEventRepository, EVENT_COLLECTION_NAME, EVENT_INDEXES } from '../
 import { EventDataError } from '../src/event-model.js';
 
 const now = new Date('2030-01-01T00:00:00.000Z');
-const identity = subject => Object.freeze({ subject, sessionId: `session-${subject}`, scopes: Object.freeze(['noblenest:events']) });
+const identity = subject => Object.freeze({ subject, creatorEmail: `${subject}@example.invalid`, sessionId: `session-${subject}`, scopes: Object.freeze(['noblenest:events']) });
 const owner = identity('test-owner'), other = identity('test-other');
 const input = () => ({ title: 'Isolated repository event', description: 'In-memory test only.', eventType: 'Cleanup', thumbnailUrl: 'https://images.example.invalid/event.webp', location: 'Test location', eventDate: '2030-02-01T09:00:00.000Z' });
 const clone = document => BSON.deserialize(BSON.serialize(document));
@@ -57,6 +57,28 @@ test('construction has no database side effects; create uses BSON ObjectId, Date
   assert.equal(typeof values.eventDate, 'string'); assert.equal(Object.hasOwn(dto, '_id'), false);
   await assert.rejects(repository.createEvent(owner, { ...input(), creatorId: other.subject }), invalid('INVALID_EVENT_DATA'));
   assert.equal(collection.documents.length, 1);
+});
+
+test('creator email is required, normalized, private and immutable; historical events remain readable/editable', async () => {
+  const { collection, repository } = setup();
+  const dto = await repository.createEvent({ ...owner, creatorEmail: ' Owner@Example.Invalid ' }, input());
+  assert.equal(collection.documents[0].creatorEmail, 'owner@example.invalid');
+  assert.equal(Object.hasOwn(dto, 'creatorEmail'), false);
+  for (const email of [undefined, '', 'invalid', 'a\nb@example.invalid']) {
+    await assert.rejects(repository.createEvent({ ...owner, creatorEmail: email }, input()), invalid('CREATOR_ACCOUNT_UNAVAILABLE'));
+  }
+  for (const patch of [{ creatorEmail: 'attacker@example.invalid' }, { creatorId: other.subject }]) {
+    await assert.rejects(repository.createEvent(owner, { ...input(), ...patch }), invalid('INVALID_EVENT_DATA'));
+    await assert.rejects(repository.updateOwnedEvent(owner, dto.id, patch), invalid('INVALID_EVENT_DATA'));
+  }
+  await repository.updateOwnedEvent(other, dto.id, { title: 'Forbidden' });
+  assert.equal(collection.documents[0].title, input().title);
+  await repository.updateOwnedEvent(owner, dto.id, { title: 'Updated' });
+  assert.equal(collection.documents[0].creatorEmail, 'owner@example.invalid');
+  delete collection.documents[0].creatorEmail;
+  assert.equal((await repository.findEventById(dto.id)).id, dto.id);
+  assert.equal((await repository.updateOwnedEvent(owner, dto.id, { title: 'Historical' })).title, 'Historical');
+  assert.equal(Object.hasOwn(collection.documents[0], 'creatorEmail'), false);
 });
 
 test('lookup returns an explicit DTO, handles missing documents and never returns MongoDB metadata', async () => {

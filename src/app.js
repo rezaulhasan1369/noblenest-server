@@ -33,7 +33,7 @@ export function createApp(config, authorization, eventRepository, participationR
   app.use('/api/events', createOwnedEventRouter(eventRepository, authenticate));
   app.use('/api/events', createParticipationRouter(participationRepository, authenticate));
   app.use('/api/events', createEventRouter(eventRepository));
-  app.use('/api/events', createEventWriteRouter(eventRepository, authenticate));
+  app.use('/api/events', createEventWriteRouter(eventRepository, authenticate, authorization?.creatorEmail));
   app.use((_req, res) => res.status(404).json({ error: 'Not found' }));
   // Do not return or log driver errors, request bodies, or configuration values.
   app.use((error, _req, res, _next) => {
