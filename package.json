@@ -14,7 +14,7 @@
     "check:db": "node --env-file-if-exists=.env scripts/check-db.js",
     "check:events": "node --check src/event-routes.js && node --check src/event-write-routes.js && node --check src/event-owned-routes.js && node --check src/event-store.js && node --check src/runtime.js && node --check scripts/event-indexes-plan.js && node --check test/event-routes.test.js && node --check test/event-store.test.js && node --check test/event-write-routes.test.js && node --check test/event-owned-routes.test.js && npm run check:participation",
     "events:indexes:plan": "node scripts/event-indexes-plan.js",
-    "check:participation": "node --check src/participation-repository.js && node --check src/participation-routes.js && node --check scripts/participation-indexes-plan.js && node --check test/participation.test.js",
+    "check:participation": "node --check src/event-lifecycle.js && node --check test/event-lifecycle.test.js && node --check src/participation-repository.js && node --check src/participation-routes.js && node --check scripts/participation-indexes-plan.js && node --check test/participation.test.js",
     "participation:indexes:plan": "node scripts/participation-indexes-plan.js"
   },
   "dependencies": {

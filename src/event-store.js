@@ -1,6 +1,7 @@
 import { MongoClient } from 'mongodb';
 import { createEventRepository, EVENT_COLLECTION_NAME } from './event-repository.js';
 import { createParticipationRepository, PARTICIPATION_COLLECTION_NAME } from './participation-repository.js';
+import { createEventLifecycle } from './event-lifecycle.js';
 
 export function createEventStore(config, { Client = MongoClient } = {}) {
   if (!config.mongoUri && !config.dbName && config.nodeEnv !== 'production') {
@@ -17,8 +18,12 @@ export function createEventStore(config, { Client = MongoClient } = {}) {
   // The driver connects lazily on the first read, then reuses this client pool.
   // No ping, inserts, collection creation or index initialization at startup.
   const database = client.db(config.dbName), events = database.collection(EVENT_COLLECTION_NAME);
-  const repository = createEventRepository(events);
-  const participationRepository = createParticipationRepository(database.collection(PARTICIPATION_COLLECTION_NAME), events);
+  const participants = database.collection(PARTICIPATION_COLLECTION_NAME);
+  const lifecycle = createEventLifecycle(client, events, participants);
+  // Low-level repositories retain read/validation contracts; all runtime join
+  // and delete routes use the transaction-coordinated lifecycle operations.
+  const repository = Object.freeze({ ...createEventRepository(events), deleteOwnedEvent: lifecycle.deleteOwnedEvent });
+  const participationRepository = Object.freeze({ ...createParticipationRepository(participants, events), joinEvent: lifecycle.joinEvent });
   let closing;
   return Object.freeze({
     repository,
