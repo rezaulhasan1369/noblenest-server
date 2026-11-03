@@ -20,8 +20,11 @@ then `npm run dev`. Local API: http://127.0.0.1:5000/api/health. Use port 5000 c
 Commands: `npm run check`, `npm test`, `npm start`, `npm run check:db`.
 Health returns only `{ "status": "ok" }`; it is liveness, not database readiness.
 Database readiness is an operator-only CLI command with a bounded connection/ping,
-generic output and nonzero exit on failure. Run it in the deployed service shell
-after securely supplying Atlas credentials. There is no public readiness endpoint.
+generic output and nonzero exit on failure. Run it only from an approved operator
+environment after securely supplying the intended database configuration. The
+current Render Free service does not provide shell access. An operator-machine
+ping proves that machine's connectivity, not the deployed service's connectivity;
+use deployed database-backed application reads for the latter. There is no public readiness endpoint.
 Health does not need a database connection; event reads use MongoDB lazily.
 
 `CLIENT_ORIGIN` is a comma-separated list of exact origins without trailing slashes.
