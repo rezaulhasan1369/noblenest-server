@@ -1,6 +1,6 @@
 # NobleNest API
 
-Social development event CRUD, private ownership listings and participation. Client repository: https://github.com/rezaulhasan1369/noblenest-client ; server repository: https://github.com/rezaulhasan1369/noblenest-server . Documented API https://noblenest-api.onrender.com has not been verified against the local D5 revision.
+Social development event CRUD, private ownership listings and participation. Client repository: https://github.com/rezaulhasan1369/noblenest-client ; server repository: https://github.com/rezaulhasan1369/noblenest-server . Official API: https://noblenest-api.onrender.com . Official website: https://noblenest-web.onrender.com . Both services are deployed on Render Free in Singapore; Vercel is retained as a frontend rollback fallback.
 
 ### Creator email (D5)
 
@@ -15,7 +15,7 @@ Unit/HTTP tests use in-memory collections and locally signed JWTs. Profile integ
 There is no distributed event API rate limiter. Per-process counters would reset and differ across instances, so shared/durable protection is deferred pending separately approved infrastructure. Existing auth-form throttles remain enabled. Token acquisition and event fetches share a bounded cancellation signal on the client, without automatic mutation retries. Participation index checks, orphan omission and non-cascading deletion policies below remain unchanged; no automatic maintenance or index creation was added.
 
 Node 24, npm, JavaScript ES modules. Run `npm ci`, copy `.env.example` to `.env`,
-then `npm run dev`. Local API: http://localhost:5000/api/health.
+then `npm run dev`. Local API: http://127.0.0.1:5000/api/health. Use port 5000 consistently, including the JWT audience on both services; override legacy port 5001 examples in copied templates.
 
 Commands: `npm run check`, `npm test`, `npm start`, `npm run check:db`.
 Health returns only `{ "status": "ok" }`; it is liveness, not database readiness.
@@ -25,31 +25,28 @@ after securely supplying Atlas credentials. There is no public readiness endpoin
 Health does not need a database connection; event reads use MongoDB lazily.
 
 `CLIENT_ORIGIN` is a comma-separated list of exact origins without trailing slashes.
-Use `http://localhost:3000` locally; remote production origins must use HTTPS.
+Use `http://127.0.0.1:3000` locally, matching the client origin exactly; remote production origins must use HTTPS.
 Production startup requires both MongoDB variables. Development allows both empty.
 Render supplies `PORT`; the server binds to `0.0.0.0` and closes on SIGTERM/SIGINT.
 Body limit is 16 KiB. CORS is a browser control, not authentication.
 
-After owner approval, import this independent repository into Render as a Node web
-service, root `.`, build `npm ci`, start `npm start`, health path `/api/health`.
-`render.yaml` describes the same configuration; review plan/pricing in the dashboard.
-Node is pinned through `.node-version` and package engines. Set `NODE_ENV=production`,
-the approved HTTPS frontend origin, and both MongoDB variables in provider settings.
-Never put real secrets in YAML, source, commits or screenshots.
+## Deployment and environment configuration
 
-Atlas needs an application database user with least privilege on the selected database
-and network access for the deployed service's actual outbound addresses. Configure
-these only with owner approval; do not default to unrestricted network access.
+The existing API is deployed as noblenest-api; do not create another service as a setup step. Build: npm ci. Start: npm start. Runtime compute plan: Free. Render supplies the HTTP port. Node 24 is pinned through .node-version and package engines. Never put secrets in YAML, source, commits or screenshots.
 
-Recheck health, the frontend browser button, allowed/rejected CORS origins, and
-`npm run check:db` after deployment and an authorized GitHub push/redeploy.
+Required environment-variable names, without credential values:
 
-## Deployment verification
+- PORT, NODE_ENV, CLIENT_ORIGIN
+- MONGODB_URI, MONGODB_DB_NAME
+- AUTH_JWT_ISSUER, AUTH_JWT_AUDIENCE, AUTH_JWKS_URL
 
-Production MongoDB connectivity previously passed. GitHub-triggered deployment
-remains unverified. After an approved push to `main`, confirm Render automatically
-deploys the pushed commit and `/api/health` returns HTTP 200. Record the deployment
-trigger and commit SHA before considering a manual deployment.
+Configure all three authentication URLs together. Locally, issuer is the frontend origin http://127.0.0.1:3000, audience is http://127.0.0.1:5000, and JWKS is the frontend origin followed by /api/auth/jwks. Use the same audience on the client. Both services must use the same database and exact database-name spelling.
+
+In production, issuer is https://noblenest-web.onrender.com, audience is https://noblenest-api.onrender.com, and JWKS is the issuer followed by /api/auth/jwks. CORS includes the Render frontend and preserves both previously approved Vercel origins. JWT verification accepts one configured issuer; Vercel is a rollback fallback, not simultaneous authenticated failover.
+
+Atlas uses the existing restricted access list, including Render Singapore ranges 74.220.52.0/24 and 74.220.60.0/24. No unrestricted Atlas rule is required. Network rules, database users and indexes require separate owner authorization to change.
+
+Production deployments, public database-backed reads, CORS, guest authorization and JWKS checks have passed. The owner reports browser authentication acceptance at 9/9 PASS, including email/password, Google OAuth, refresh and logout. The existing local backend test result is 78/78 PASS. Complete live event-management and participation acceptance remains pending approved QA data and two-account checks. Health is liveness only.
 
 ## Public event retrieval (D3.2)
 
@@ -178,8 +175,7 @@ PUT is unsupported; authenticated join routes are documented below. CORS is not 
 
 Writes reuse the existing `nn_events` repository and pooled client. There is no
 index execution or new environment variable. Tests use signed fixture JWTs and
-isolated BSON-aware collection doubles only. Live Atlas writes and deployments
-are deliberately untested; no records have been inserted into a real database.
+isolated BSON-aware collection doubles only. These automated tests do not insert live Atlas records. Production event-write acceptance must be recorded separately using approved QA data.
 
 ## Authenticated My Events listing (D3.5A)
 
@@ -229,7 +225,7 @@ Existing global CORS/body-parser errors retain their behavior. No driver errors,
 tokens, configuration values or raw exceptions are returned or logged.
 
 Tests use signed fixture tokens and isolated collection doubles only. Frontend
-Manage Events integration requires separate owner review/approval after D3.5A.
+Manage Events is integrated in the frontend; live ownership/persistence acceptance remains a separate approved production check.
 
 ## Event participation (D4.1)
 
@@ -270,9 +266,7 @@ confirmed by metadata and a successful read hinting that index. Building/hidden,
 sparse, partial, non-unique, prepareUnique and non-simple collation
 variants do not satisfy the check. An equivalent full index need not have the
 planned name. Inspection failure also blocks insertion; there is no override or
-cached confirmation. The operator must separately obtain owner approval to
-provision/verify the collection/index and database permissions before enabling
-production joins. Do not drop/alter the required index while join writes are active.
+cached confirmation. Read-only inspection must establish whether the existing collection/index and permissions satisfy this contract. Any provisioning or modification requires separate owner approval. Do not drop/alter the required index while join writes are active.
 
 The atomic unique constraint, not a read-then-insert check, prevents concurrent
 duplicates. Insert duplicate-key code 11000 is recovered only by finding the
